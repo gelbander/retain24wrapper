@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import time
 from tempfile import NamedTemporaryFile
 from requests.exceptions import SSLError
 
@@ -12,6 +13,11 @@ from dicttoxml import dicttoxml
 BASE_URL        = 'https://pilot.mvoucher.se/ta/servlet/TA_XML'
 CURRENT_PATH    = os.path.dirname(os.path.realpath(__file__))
 CERTIFICATE     = '/'.join([CURRENT_PATH, 'data/rchery_butik.pem'])
+
+ACTIONS = {}
+ACTIONS['GET_PROVIDERS'] = {'TA_ACTION': '5-45102'}
+ACTIONS['ISSUE'] = {'TA_ACTION': '5-45103'}
+
 
 class Provider(object):
 
@@ -48,9 +54,8 @@ class Retain24Wrapper(object):
 
             :return: self.providers: A list with available providers.
         """
-        params = {'TA_ACTION': '5-45103'}
         try:
-            resp = requests.get(self.url, params=params, cert=CERTIFICATE, verify=True, stream=True)
+            resp = requests.get(self.url, params=ACTIONS['GET_PROVIDERS'], cert=CERTIFICATE, verify=True, stream=True)
         except SSLError:
             print 'SSL handshake failed./n'
             return False
@@ -77,10 +82,10 @@ class Retain24Wrapper(object):
 
         :return: file: Valid xml file.
         """
-        email_address = kwargs.get('email_address', 'example@dynamo.mobi')
-        sms_text = kwargs.get('sms_text', 'Congrats')
-        email_text = kwargs.get('email_text', 'Congrats')
-        send_date = kwargs.get('send_date', '2006-04-07 14:00')
+        email_address = kwargs.get('email_address', 'None')
+        sms_text = kwargs.get('sms_text', 'None')
+        email_text = kwargs.get('email_text', 'None')
+        send_date = kwargs.get('send_date', time.strftime('%Y-%m-%d %H:%m'))
 
         obj = {
             "COUPON": {
@@ -124,14 +129,12 @@ class Retain24Wrapper(object):
 
         :return receipt: Receipt or False
          """
-        params = {'TA_ACTION': '5-45102'}
-
         xml = self.populate_xml(template_id=template_id, qty=qty, msisdn=msisdn, **kwargs)
         try:
             resp = requests.post(
                 self.url,
                 data=xml,
-                params=params,
+                params=ACTIONS['ISSUE'],
                 cert=CERTIFICATE,
                 verify=True,
                 stream=True
