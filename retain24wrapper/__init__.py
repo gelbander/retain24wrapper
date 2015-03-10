@@ -1,4 +1,4 @@
-from .retain24wrapper import MainClass
+from .retain24wrapper import Retain24Wrapper
 
 __title__ = 'retain24wrapper'
 __version__ = '0.0.1'

@@ -1,9 +1,13 @@
+
 try:
     from setuptools import setup
 except ImportError:
     from distutils.core import setup
 
 import retain24wrapper
+
+with open('requirements.txt') as f:
+    required = f.read().splitlines()
 
 setup(
     name='retain24wrapper',
@@ -24,4 +28,5 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules'
     ),
     description='A wrapper for Retain24 webservice api.',
+    install_requires=required
 )
