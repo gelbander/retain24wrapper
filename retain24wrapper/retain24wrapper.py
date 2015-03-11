@@ -10,13 +10,9 @@ import xmltodict
 from dicttoxml import dicttoxml
 
 
-BASE_URL        = 'https://pilot.mvoucher.se/ta/servlet/TA_XML'
-CURRENT_PATH    = os.path.dirname(os.path.realpath(__file__))
-CERTIFICATE     = '/'.join([CURRENT_PATH, 'data/rchery_butik.pem'])
-
 ACTIONS = {}
-ACTIONS['GET_PROVIDERS'] = {'TA_ACTION': '5-45102'}
-ACTIONS['ISSUE'] = {'TA_ACTION': '5-45103'}
+ACTIONS['GET_PROVIDERS'] = {'TA_ACTION': '5-45103'}
+ACTIONS['ISSUE'] = {'TA_ACTION': '5-45102'}
 
 
 class Provider(object):
@@ -36,17 +32,17 @@ class Retain24Wrapper(object):
     Usage::
 
     >>> from retain24wrapper import Retain24Wrapper
-    >>> r = Retain24Wrapper(url[optional])
+    >>> r = Retain24Wrapper(basd_url, certificate_path)
     >>> providers = r.get_providers()
     [H&M - 001, Lindex - 002, ICA - 003]
     >>> r.issue_valuable(args)
     OrderedDict([(u'MSISDN', u'00467311122233'), ... (u'STATUS', u'OK')])
 
     """
-    def __init__(self, url=BASE_URL, certificate=CERTIFICATE_PATH):
+    def __init__(self, base_url, certificate_path):
         """ Setup the retain wrapper object. """
-        self.url = url
-        self.certificate_path = CERTIFICATE_PATH
+        self.base_url = base_url
+        self.certificate_path = certificate_path
         self.providers = []
 
     def get_providers(self):
@@ -54,18 +50,20 @@ class Retain24Wrapper(object):
 
             :return: self.providers: A list with available providers.
         """
+
         try:
-            resp = requests.get(self.url, params=ACTIONS['GET_PROVIDERS'], cert=CERTIFICATE, verify=True, stream=True)
+            resp = requests.get(self.base_url, params=ACTIONS['GET_PROVIDERS'], cert=self.certificate_path, verify=True, stream=True)
         except SSLError:
             print 'SSL handshake failed./n'
             return False
 
-        content = xmltodict.parse(resp.content)
-
-        for template in content['TICKETANYWHERE']['COUPON']['RESPONSE']['TEMPLATELIST']['TEMPLATE']:
+        for template in self.parse_response(resp)['TEMPLATELIST']['TEMPLATE']:
             self.providers.append(Provider(template))
 
         return self.providers
+
+    def parse_response(self, resp):
+        return xmltodict.parse(resp.content)['TICKETANYWHERE']['COUPON']['RESPONSE']
 
     def populate_xml(self, template_id, qty, msisdn, **kwargs):
         """ Basically parse user-args to xml
@@ -108,10 +106,9 @@ class Retain24Wrapper(object):
         tmp.close()
         return file
 
-    def parse_response(self, resp):
+    def validate_receipt(self, resp):
         """ Parse the issue and send response and checks for errors."""
-        content = xmltodict.parse(resp.content)
-        receipt = content['TICKETANYWHERE']['COUPON']['RESPONSE']['RECEIPT']
+        receipt = self.parse_response(resp)['RECEIPT']
 
         if (receipt['STATUS'] == 'ERROR'):
             raise ValueError('ERRORCODE: {error_code} - {message}'.format(
@@ -132,10 +129,10 @@ class Retain24Wrapper(object):
         xml = self.populate_xml(template_id=template_id, qty=qty, msisdn=msisdn, **kwargs)
         try:
             resp = requests.post(
-                self.url,
+                self.base_url,
                 data=xml,
                 params=ACTIONS['ISSUE'],
-                cert=CERTIFICATE,
+                cert=self.certificate_path,
                 verify=True,
                 stream=True
             )
@@ -143,10 +140,9 @@ class Retain24Wrapper(object):
             print 'SSL handshake failed./n'
             return False
 
-        receipt = self.parse_response(resp)
+        receipt = self.validate_receipt(resp)
 
         return receipt
 
-print 'Running!'
 
 
