@@ -2,7 +2,7 @@
 Wrapper for the Retain 24 web services. Currently only support get providers and issue a valueable.
 
 ## Installation
-The wrapper need a certificate and a path.
+The wrapper need a certificate and a url.
 
     $ python setup.py
 

@@ -12,6 +12,7 @@ from dicttoxml import dicttoxml
 ACTIONS = {}
 ACTIONS['GET_PROVIDERS'] = {'TA_ACTION': '5-45103'}
 ACTIONS['ISSUE'] = {'TA_ACTION': '5-45102'}
+ACTIONS['ACTIVATE'] = {'TA_ACTION': '5-42320'}
 
 
 class Provider(object):
@@ -143,5 +144,18 @@ class Retain24Wrapper(object):
 
         return receipt
 
+    def activate(self):
 
+        try:
+            resp = requests.get(
+                self.base_url,
+                params=ACTIONS['ACTIVATE'],
+                verify=True,
+                stream=True
+            )
+        except SSLError:
+            print 'SSL handshake failed./n'
+            return False
+
+        return resp
 
