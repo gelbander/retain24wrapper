@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import os
 import time
 from tempfile import NamedTemporaryFile
 from requests.exceptions import SSLError
@@ -32,7 +31,7 @@ class Retain24Wrapper(object):
     Usage::
 
     >>> from retain24wrapper import Retain24Wrapper
-    >>> r = Retain24Wrapper(basd_url, certificate_path)
+    >>> r = Retain24Wrapper(base_url, certificate_path)
     >>> providers = r.get_providers()
     [H&M - 001, Lindex - 002, ICA - 003]
     >>> r.issue_valuable(args)
