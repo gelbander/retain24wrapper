@@ -2,18 +2,18 @@
 
 import time
 from tempfile import NamedTemporaryFile
-from requests.exceptions import SSLError
+from xml.etree import cElementTree as ET
+from xml.etree.cElementTree import XML
 
+from dicttoxml import dicttoxml
 import requests
 import xmltodict
-from dicttoxml import dicttoxml
 
 
 ACTIONS = {}
 ACTIONS['GET_PROVIDERS'] = {'TA_ACTION': '5-45103'}
 ACTIONS['ISSUE'] = {'TA_ACTION': '5-45102'}
-ACTIONS['ACTIVATE'] = {'TA_ACTION': '5-42320'}
-
+ACTIONS['VALIDATE'] = {'TA_ACTION': '5-43101'}
 
 class Provider(object):
 
@@ -37,6 +37,8 @@ class Retain24Wrapper(object):
     [H&M - 001, Lindex - 002, ICA - 003]
     >>> r.issue_valuable(args)
     OrderedDict([(u'MSISDN', u'00467311122233'), ... (u'STATUS', u'OK')])
+    >>> r.validate_valuable(args)
+    OrderedDict([(u'CPNINFO'...
 
     """
     def __init__(self, base_url, certificate_path):
@@ -45,65 +47,29 @@ class Retain24Wrapper(object):
         self.certificate_path = certificate_path
         self.providers = []
 
-    def get_providers(self):
-        """ Cet currently available providers.
-
-            :return: self.providers: A list with available providers.
-        """
-
-        try:
-            resp = requests.get(self.base_url, params=ACTIONS['GET_PROVIDERS'], cert=self.certificate_path, verify=True, stream=True)
-        except SSLError:
-            print 'SSL handshake failed./n'
-            return False
-
-        for template in self.parse_response(resp)['TEMPLATELIST']['TEMPLATE']:
-            self.providers.append(Provider(template))
-
-        return self.providers
-
     def parse_response(self, resp):
+        """Parse response data into a dictionary."""
         return xmltodict.parse(resp.content)['TICKETANYWHERE']['COUPON']['RESPONSE']
 
-    def populate_xml(self, template_id, qty, msisdn, **kwargs):
-        """ Basically parse user-args to xml
-        that is accepted by retin24 to issue a valuable/coupon.
-
-        :param template_id: The retain24 id for a clinet/organization
-        :param qty: The value of coupon 100 = 1 SEK
-        :param msisdn: Customer id also customers phone number.
-
-        :param: email_address: (optional) Customers email.
-        :param: sms_text: (optional) SMS text.
-        :param: email_text: (optional) Email text.
-        :param: send_date: (optional) Date sent.
-
-        :return: file: Valid xml file.
-        """
-        email_address = kwargs.get('email_address', 'None')
-        sms_text = kwargs.get('sms_text', 'None')
-        email_text = kwargs.get('email_text', 'None')
-        send_date = kwargs.get('send_date', time.strftime('%Y-%m-%d %H:%m'))
-
-        obj = {
-            "COUPON": {
-                "SEND": {
-                    "TEMPLATE": template_id,
-                    "QTY": qty,
-                    "MSISDN": msisdn,
-                    "EMAIL_ADDRESS": email_address,
-                    "SMS_TEXT": sms_text,
-                    "EMAIL_TEXT": email_text,
-                    "SEND_DATE": send_date,
-                }
-            }
-        }
-
+    def populate_xml(self, body, **kwargs):
+        """ Prepare the xml data to be sent to the api"""
         tmp = NamedTemporaryFile(mode='w+b', suffix='xml', delete=True)
-        tmp.write(dicttoxml(obj, custom_root="TICKETANYWHERE", attr_type=False))
+
+        root = ET.Element("TICKETANYWHERE")
+        coupon = ET.SubElement(root, "COUPON", {'VER': '1.0'})
+
+        body_xml = XML(dicttoxml(body, root=False, attr_type=False))
+        if (kwargs.get('body_attrs')):
+            body_xml.attrib = kwargs.get('body_attrs')
+
+        coupon.append(body_xml)
+        tmp.write('<?xml version="1.0" encoding="ISO-8859-1" ?>')
+        ET.ElementTree(root).write(tmp)
+
         tmp.seek(0)
         file = tmp.read()
         tmp.close()
+
         return file
 
     def validate_receipt(self, resp):
@@ -117,6 +83,19 @@ class Retain24Wrapper(object):
             ))
         return receipt
 
+    def get_providers(self):
+        """ Cet currently available providers.
+
+            :return: self.providers: A list with available providers.
+        """
+
+        resp = requests.get(self.base_url, params=ACTIONS['GET_PROVIDERS'], cert=self.certificate_path, verify=True, stream=True)
+
+        for template in self.parse_response(resp)['TEMPLATELIST']['TEMPLATE']:
+            self.providers.append(Provider(template))
+
+        return self.providers
+
     def issue_valuable(self, template_id, qty, msisdn, **kwargs):
         """ Generate a coupon (aka valuable).
 
@@ -124,38 +103,69 @@ class Retain24Wrapper(object):
         :param qty: The value of coupon 100 = 1 SEK
         :param msisdn: Customer id also customers phone number.
 
-        :return receipt: Receipt or False
+        :param: email_address: (optional) Customers email.
+        :param: sms_text: (optional) SMS text.
+        :param: email_text: (optional) Email text.
+        :param: send_date: (optional) Date sent.
+
+        :return receipt: Receipt
          """
-        xml = self.populate_xml(template_id=template_id, qty=qty, msisdn=msisdn, **kwargs)
-        try:
-            resp = requests.post(
-                self.base_url,
-                data=xml,
-                params=ACTIONS['ISSUE'],
-                cert=self.certificate_path,
-                verify=True,
-                stream=True
-            )
-        except SSLError:
-            print 'SSL handshake failed./n'
-            return False
+        email_address = kwargs.get('email_address', 'None')
+        sms_text = kwargs.get('sms_text', 'None')
+        email_text = kwargs.get('email_text', 'None')
+        send_date = kwargs.get('send_date', time.strftime('%Y-%m-%d %H:%m'))
+
+        obj = {
+            "SEND": {
+                "TEMPLATE": template_id,
+                "QTY": qty,
+                "MSISDN": msisdn,
+                "EMAIL_ADDRESS": email_address,
+                "SMS_TEXT": sms_text,
+                "EMAIL_TEXT": email_text,
+                "SEND_DATE": send_date,
+            }
+        }
+
+        xml = self.populate_xml(obj)
+
+        resp = requests.post(
+            self.base_url,
+            data=xml,
+            params=ACTIONS['ISSUE'],
+            cert=self.certificate_path,
+            verify=True,
+            stream=True
+        )
 
         receipt = self.validate_receipt(resp)
 
         return receipt
 
-    def activate(self):
+    def validate_valuable(self, msisdn, pin, multicode):
+        """ Valudate a valuable aka. coupon.
 
-        try:
-            resp = requests.get(
-                self.base_url,
-                params=ACTIONS['ACTIVATE'],
-                verify=True,
-                stream=True
-            )
-        except SSLError:
-            print 'SSL handshake failed./n'
-            return False
+        :param multicode: The unique code for a valuable.
+        :param pin: Pincode, set to empty string if provider doesnt need it.
+        :param msisdn: Customer id also customers phone number.
+        """
+        obj = {
+            "VALIDATE": {
+                "MSISDN": msisdn,
+                "PIN": pin,
+                "MULTICODE": multicode
+            }
+        }
 
-        return resp
+        xml = self.populate_xml(body=obj, body_attrs={'TYPE': 'STANDARD'})
 
+        resp = requests.post(
+            self.base_url,
+            data=xml,
+            params=ACTIONS['VALIDATE'],
+            cert=self.certificate_path,
+            verify=True,
+            stream=True
+        )
+
+        return self.parse_response(resp)
